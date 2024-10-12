@@ -1,40 +1,79 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import { User } from '../types/User'; // Adjust the import path as necessary
 
-const UserForm = ({ user, isEditMode, onSave, onClose }) => {
-    const [step, setStep] = useState(1);
-    const [formData, setFormData] = useState({
+interface UserFormProps {
+    user: User | null;
+    isEditMode: boolean;
+    onSave: (userData: User | any) => Promise<void>;
+    onClose: () => void;
+}
+
+const UserForm: React.FC<UserFormProps> = ({ user, isEditMode, onSave, onClose }) => {
+    const [step, setStep] = useState<number>(1);
+    const [formData, setFormData] = useState<{
+        name: string;
+        email: string;
+        phone: string;
+        username: string;
+        address: {
+            street: string;
+            city: string;
+        };
+        company: {
+            name: string;
+        };
+        website: string;
+    }>({
         name: user?.name || '',
         email: user?.email || '',
         phone: user?.phone || '',
-        username: user?.username || '',
+        username: isEditMode ? user?.username : '',
         address: {
-            street: user?.address?.street || '',
-            city: user?.address?.city || '',
+            street: user?.address.street || '',
+            city: user?.address.city || '',
         },
-        company:{
-            name: user?.company?.name || '',
+        company: {
+            name: user?.company.name || '',
         },
         website: user?.website || '',
     });
 
-    const [validationErrors, setValidationErrors] = useState({});
-    const [globalError, setGlobalError] = useState('');
+    const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({});
+    const [globalError, setGlobalError] = useState<string>('');
 
-    const handleChange = (e) => {
+    useEffect(() => {
+        if (!isEditMode) {
+            setFormData((prev) => ({
+                ...prev,
+                username: formData.name ? `USER-${formData.name}` : '',
+            }));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [formData.name, isEditMode]);
+
+    const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
-        if (name.includes('address')) {
+        if (name.startsWith('address.')) {
             const field = name.split('.')[1];
             setFormData({
                 ...formData,
                 address: { ...formData.address, [field]: value },
             });
+            setValidationErrors({ ...validationErrors, [name]: '' });
+        } else if (name.startsWith('company.')) {
+            const field = name.split('.')[1];
+            setFormData({
+                ...formData,
+                company: { ...formData.company, [field]: value },
+            });
+            setValidationErrors({ ...validationErrors, [name]: '' });
         } else {
             setFormData({
                 ...formData,
                 [name]: value,
             });
+            setValidationErrors({ ...validationErrors, [name]: '' });
         }
-        setValidationErrors({ ...validationErrors, [name]: '' });
     };
 
     const nextStep = () => {
@@ -42,10 +81,11 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
             setStep(step + 1);
         }
     };
+
     const prevStep = () => setStep(step - 1);
 
-    const validateStep = (step) => {
-        let errors = {};
+    const validateStep = (step: number): boolean => {
+        let errors: { [key: string]: string } = {};
 
         if (step === 1) {
             if (!formData.name || formData.name.length < 3)
@@ -54,6 +94,8 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                 errors.email = 'Valid email is required.';
             if (!formData.phone || !/^\d{10,15}$/.test(formData.phone))
                 errors.phone = 'Phone number must be between 10-15 digits.';
+            if (!isEditMode && (!formData.username || formData.username.length < 3))
+                errors.username = 'Username is required and must be at least 3 characters long.';
         }
 
         if (step === 2) {
@@ -61,9 +103,9 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
             if (!formData.address.city) errors['address.city'] = 'City is required.';
         }
 
-        if (step === 3 && formData.company) {
-            if (formData.company.length < 3)
-                errors.company = 'Company name must be at least 3 characters long.';
+        if (step === 3) {
+            if (formData.company.name && formData.company.name.length < 3)
+                errors['company.name'] = 'Company name must be at least 3 characters long.';
             if (formData.website && !/^https?:\/\/[^\s$.?#].[^\s]*$/.test(formData.website))
                 errors.website = 'Website must be a valid URL.';
         }
@@ -72,7 +114,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
         return Object.keys(errors).length === 0;
     };
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (!validateStep(3)) return;
 
@@ -84,10 +126,10 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                     city: formData.address.city,
                 },
                 company: {
-                    name: formData.company || '',
+                    name: formData.company.name || '',
                 },
             };
-            await onSave(finalData);
+            await onSave(isEditMode ? { ...user!, ...finalData } : finalData);
             onClose();
         } catch (error) {
             setGlobalError('There was an issue saving the user. Please try again.');
@@ -110,7 +152,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 value={formData.name}
                                 onChange={handleChange}
                                 required
-                                className={`w-full p-2 border ${validationErrors.name ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors.name ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors.name && <p className="text-red-500 text-sm mt-1">{validationErrors.name}</p>}
                         </div>
@@ -123,7 +165,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 value={formData.email}
                                 onChange={handleChange}
                                 required
-                                className={`w-full p-2 border ${validationErrors.email ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors.email ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors.email && <p className="text-red-500 text-sm mt-1">{validationErrors.email}</p>}
                         </div>
@@ -136,7 +178,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 value={formData.phone}
                                 onChange={handleChange}
                                 required
-                                className={`w-full p-2 border ${validationErrors.phone ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors.phone ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors.phone && <p className="text-red-500 text-sm mt-1">{validationErrors.phone}</p>}
                         </div>
@@ -146,11 +188,14 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                             <input
                                 type="text"
                                 name="username"
-                                value={formData.username}
+                                value={isEditMode ? formData.username : `USER-${formData.name}`}
+                                readOnly={isEditMode}
                                 onChange={handleChange}
                                 required
-                                className="w-full p-2 border border-light-blue rounded-lg bg-gray-100 cursor-not-allowed"
+                                className={`w-full font-black p-2 border ${validationErrors.username ? 'border-red-500' : 'border-light-blue'} rounded-lg bg-gray-600 cursor-${isEditMode ? 'not-allowed' : 'default'}`}
                             />
+                            {!isEditMode && <p className="text-sm text-gray-400">Auto-generated as USER-&lt;name&gt;</p>}
+                            {validationErrors.username && <p className="text-red-500 text-sm mt-1">{validationErrors.username}</p>}
                         </div>
 
                         <button
@@ -174,7 +219,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 value={formData.address.street}
                                 onChange={handleChange}
                                 required
-                                className={`w-full p-2 border ${validationErrors['address.street'] ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors['address.street'] ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors['address.street'] && <p className="text-red-500 text-sm mt-1">{validationErrors['address.street']}</p>}
                         </div>
@@ -187,7 +232,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 value={formData.address.city}
                                 onChange={handleChange}
                                 required
-                                className={`w-full p-2 border ${validationErrors['address.city'] ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors['address.city'] ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors['address.city'] && <p className="text-red-500 text-sm mt-1">{validationErrors['address.city']}</p>}
                         </div>
@@ -218,12 +263,12 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                             <label className="block font-medium mb-2">Company:</label>
                             <input
                                 type="text"
-                                name="company"
+                                name="company.name"
                                 value={formData.company.name}
                                 onChange={handleChange}
-                                className={`w-full p-2 border ${validationErrors.company ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors['company.name'] ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
-                            {validationErrors.company && <p className="text-red-500 text-sm mt-1">{validationErrors.company}</p>}
+                            {validationErrors['company.name'] && <p className="text-red-500 text-sm mt-1">{validationErrors['company.name']}</p>}
                         </div>
 
                         <div>
@@ -233,7 +278,7 @@ const UserForm = ({ user, isEditMode, onSave, onClose }) => {
                                 name="website"
                                 value={formData.website}
                                 onChange={handleChange}
-                                className={`w-full p-2 border ${validationErrors.website ? 'border-red-500' : 'border-light-blue'} rounded-lg`}
+                                className={`w-full p-2 border ${validationErrors.website ? 'border-red-500' : 'border-light-blue'} bg-gray-600 rounded-lg`}
                             />
                             {validationErrors.website && <p className="text-red-500 text-sm mt-1">{validationErrors.website}</p>}
                         </div>
